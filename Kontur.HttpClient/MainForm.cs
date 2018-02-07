@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
 using System.Net;
+using System.Text;
 
 namespace Kontur.HttpClient
 {
@@ -33,7 +34,7 @@ namespace Kontur.HttpClient
                             byte[] bytes = new byte[stream.Length];
                             stream.Position = 0;
                             stream.Read(bytes, 0, (int)stream.Length);
-                            InputImage = System.Text.Encoding.Default.GetString(bytes);
+                            InputImage = Encoding.Default.GetString(bytes);
                         }
                     }
                 }
@@ -46,11 +47,18 @@ namespace Kontur.HttpClient
         private void btnSendRequest_Click(object sender, EventArgs e)
         {
             HttpStatusCode statusCode;
-            var resultImage=Client.TransformImage(txtUrl.Text, InputImage, out statusCode);
+            var resultImage = Client.TransformImage(txtUrl.Text, InputImage, out statusCode);
             lblCode.Text = "Код: " + statusCode;
-            byte[] imageBytes = System.Text.Encoding.Default.GetBytes(resultImage);
+            byte[] imageBytes = Encoding.Default.GetBytes(resultImage);
             MemoryStream ms = new MemoryStream(imageBytes);
-            pctResult.Image = Image.FromStream(ms);
+            try
+            {
+                pctResult.Image = Image.FromStream(ms);
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
         }
     }
 }
