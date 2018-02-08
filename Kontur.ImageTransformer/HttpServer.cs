@@ -65,7 +65,7 @@ namespace Kontur.ImageTransformer
             if (filterName == "sepia")
                 return true;
             int i = filterName.IndexOf('(');
-            if (filterName.Substring(0, i + 1) != "threshold")
+            if (filterName.Substring(0, i) != "threshold")
                 return false;
             int j = filterName.IndexOf(')');
             UInt16 parameter;
@@ -83,6 +83,7 @@ namespace Kontur.ImageTransformer
             var request = listenerContext.Request;
             string filterName;
             int[] frameParameters=new int[4];
+            string inputImage, resultImage;
             try
             {
                 if (request.HttpMethod != "POST")
@@ -106,6 +107,10 @@ namespace Kontur.ImageTransformer
                         throw new ArgumentException();
                 if(request.ContentLength64 > maxImageSize)
                     throw new ArgumentException();
+                var requestBodyStream = request.InputStream;
+                using (var reader = new StreamReader(requestBodyStream))
+                    inputImage = reader.ReadToEnd();
+                resultImage = ImageConverter.Convert(inputImage, filterName, frameParameters[0], frameParameters[1], frameParameters[2], frameParameters[3]);
             }
             catch(ArgumentException)
             {
@@ -114,12 +119,7 @@ namespace Kontur.ImageTransformer
                     writer.Write("");
                 return;
             }
-            var requestBodyStream = request.InputStream;
-            string image;
-            using (var reader = new StreamReader(requestBodyStream))
-                image = reader.ReadToEnd();
-            ImageConverter.Convert(ref image, filterName, frameParameters[0], frameParameters[1], frameParameters[2], frameParameters[3]);
-            if (image == null)
+            if (resultImage == null)
             {
                 listenerContext.Response.StatusCode = (int)HttpStatusCode.NoContent;
                 using (var writer = new StreamWriter(listenerContext.Response.OutputStream))
@@ -128,7 +128,7 @@ namespace Kontur.ImageTransformer
             }
             listenerContext.Response.StatusCode = (int)HttpStatusCode.OK;
             using (var writer = new StreamWriter(listenerContext.Response.OutputStream))
-                writer.Write(image);
+                writer.Write(resultImage);
         }
         public void Stop()
         {
