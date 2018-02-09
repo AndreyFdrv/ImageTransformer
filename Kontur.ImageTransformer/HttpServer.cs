@@ -68,8 +68,8 @@ namespace Kontur.ImageTransformer
             if (filterName.Substring(0, i) != "threshold")
                 return false;
             int j = filterName.IndexOf(')');
-            UInt16 parameter;
-            if (!UInt16.TryParse(filterName.Substring(i + 1, j - i - 1), out parameter))
+            byte parameter;
+            if (!Byte.TryParse(filterName.Substring(i + 1, j - i - 1), out parameter))
                 return false;
             if ((parameter < 0) || (parameter > 100))
                 return false;

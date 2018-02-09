@@ -2,11 +2,20 @@
 using System.IO;
 using System.Text;
 using System.Drawing;
+using System.Threading;
 
 namespace Kontur.ImageTransformer
 {
-    class ImageConverter
+    internal class ImageConverter
     {
+        private const byte XThreadsCount = 4;
+        private const byte YThreadsCount = 2;
+        private int XStepSize;
+        private int YStepSize;
+        private Bitmap OutputImage;
+        private int OutputImageWidth;
+        private int OutputImageHeight;
+        private byte ThresholdFilterParameter;
         private Bitmap CutImage(Bitmap inputImage, int x, int y, int w, int h)
         {
             if (w < 0)
@@ -43,31 +52,122 @@ namespace Kontur.ImageTransformer
             g.DrawImage(inputImage, 0, 0, frame, GraphicsUnit.Pixel);
             return outputImage;
         }
-        private Color UseGrayscaleFilter(Color color)
+        private void UseGrayscaleFilter(object threadIndeces)
         {
-            byte intensity = (byte)((color.R + color.G + color.B) / 3);
-            return Color.FromArgb(color.A, intensity, intensity, intensity);
-        }
-        private Color UseSepiaFilter(Color color)
-        {
-            float r = (color.R * .393f) + (color.G * .769f) + (color.B * .189f);
-            if (r > 255)
-                r = 255;
-            float g = (color.R * .349f) + (color.G * .686f) + (color.B * .168f);
-            if (g > 255)
-                g = 255;
-            float b = (color.R * .272f) + (color.G * .534f) + (color.B * .131f);
-            if (b > 255)
-                b = 255;
-            return Color.FromArgb(color.A, (byte)r, (byte)g, (byte)b);
-        }
-        private Color UseThresholdFilter(Color color, UInt16 x)
-        {
-            byte intensity = (byte)((color.R + color.G + color.B) / 3);
-            if (intensity >= 255 * x / 100)
-                return Color.FromArgb(color.A, 255, 255, 255);
+            int x = ((Point)threadIndeces).X;
+            int startX = XStepSize * x;
+            int endX;
+            if (x == XThreadsCount - 1)
+                endX = OutputImageWidth-1;
             else
-                return Color.FromArgb(color.A, 0, 0, 0);
+                endX = XStepSize * (1 + x)-1;
+            int y = ((Point)threadIndeces).Y;
+            int startY = YStepSize * y;
+            int endY;
+            if (y == YThreadsCount - 1)
+                endY = OutputImageHeight - 1;
+            else
+                endY = YStepSize * (1 + y) - 1;
+            for (int i = startY; i <= endY; i++)
+            {
+                for (int j = startX; j <= endX; j++)
+                {
+                    Color color;
+                    lock (OutputImage)
+                    {
+                        color = OutputImage.GetPixel(j, i);
+                    }
+                    byte intensity = (byte)((color.R + color.G + color.B) / 3);
+                    lock (OutputImage)
+                    {
+                        OutputImage.SetPixel(j, i, Color.FromArgb(color.A, intensity, intensity, intensity));
+                    }
+                }
+            }
+        }
+        private void UseSepiaFilter(object threadIndeces)
+        {
+            int x = ((Point)threadIndeces).X;
+            int startX = XStepSize * x;
+            int endX;
+            if (x == XThreadsCount - 1)
+                endX = OutputImageWidth - 1;
+            else
+                endX = XStepSize * (1 + x) - 1;
+            int y = ((Point)threadIndeces).Y;
+            int startY = YStepSize * y;
+            int endY;
+            if (y == YThreadsCount - 1)
+                endY = OutputImageHeight - 1;
+            else
+                endY = YStepSize * (1 + y) - 1;
+            for (int i = startY; i <= endY; i++)
+            {
+                for (int j = startX; j <= endX; j++)
+                {
+                    Color color;
+                    lock (OutputImage)
+                    {
+                        color = OutputImage.GetPixel(j, i);
+                    }
+                    float r = (color.R * .393f) + (color.G * .769f) + (color.B * .189f);
+                    if (r > 255)
+                        r = 255;
+                    float g = (color.R * .349f) + (color.G * .686f) + (color.B * .168f);
+                    if (g > 255)
+                        g = 255;
+                    float b = (color.R * .272f) + (color.G * .534f) + (color.B * .131f);
+                    if (b > 255)
+                        b = 255;
+                    lock (OutputImage)
+                    {
+                        OutputImage.SetPixel(j, i, Color.FromArgb(color.A, (byte)r, (byte)g, (byte)b));
+                    }
+                }
+            }
+        }
+        private void UseThresholdFilter(object threadIndeces)
+        {
+            int x = ((Point)threadIndeces).X;
+            int startX = XStepSize * x;
+            int endX;
+            if (x == XThreadsCount - 1)
+                endX = OutputImageWidth - 1;
+            else
+                endX = XStepSize * (1 + x) - 1;
+            int y = ((Point)threadIndeces).Y;
+            int startY = YStepSize * y;
+            int endY;
+            if (y == YThreadsCount - 1)
+                endY = OutputImageHeight - 1;
+            else
+                endY = YStepSize * (1 + y) - 1;
+            for (int i = startY; i <= endY; i++)
+            {
+                for (int j = startX; j <= endX; j++)
+                {
+                    Color color;
+                    lock (OutputImage)
+                    {
+                        color = OutputImage.GetPixel(j, i);
+                    }
+                    byte intensity = (byte)((color.R + color.G + color.B) / 3);
+                    if (intensity >= 255 * ThresholdFilterParameter / 100)
+                    {
+                        lock (OutputImage)
+                        {
+                            OutputImage.SetPixel(j, i, Color.FromArgb(color.A, 255, 255, 255));
+                        }
+                    }
+                    else
+                    {
+                        lock (OutputImage)
+                        {
+                            OutputImage.SetPixel(j, i, Color.FromArgb(color.A, 0, 0, 0));
+                        }
+                    }
+                }
+            }
         }
         public string Convert(string strInputImage, string filterName, int x, int y, int w, int h)
         {
@@ -82,38 +182,61 @@ namespace Kontur.ImageTransformer
             {
                 throw ex;
             }
-            Bitmap outputImage = CutImage(inputImage, x, y, w, h);
-            if (outputImage == null)
-                return null;
-            if (filterName == "grayscale")
+            byte[] outputBytes;
+            using (OutputImage = CutImage(inputImage, x, y, w, h))
             {
-                for (int i = 0; i < outputImage.Width; i++)
+                if (OutputImage == null)
+                    return null;
+                OutputImageWidth = OutputImage.Width;
+                OutputImageHeight = OutputImage.Height;
+                XStepSize = OutputImageWidth / XThreadsCount;
+                YStepSize = OutputImageHeight / YThreadsCount;
+                Thread[][] threads = new Thread[YThreadsCount][];
+                if (filterName == "grayscale")
                 {
-                    for (int j = 0; j < outputImage.Height; j++)
-                        outputImage.SetPixel(i, j, UseGrayscaleFilter(outputImage.GetPixel(i, j)));
+                    for(byte i=0; i<YThreadsCount; i++)
+                    {
+                        threads[i] = new Thread[XThreadsCount];
+                        for (byte j = 0; j < XThreadsCount; j++)
+                        {
+                            threads[i][j] = new Thread(UseGrayscaleFilter);
+                            threads[i][j].Start(new Point(j, i));
+                        }
+                    }
                 }
-            }
-            else if(filterName == "sepia")
-            {
-                for (int i = 0; i < outputImage.Width; i++)
+                else if (filterName == "sepia")
+                for(byte i=0; i<YThreadsCount; i++)
                 {
-                    for (int j = 0; j < outputImage.Height; j++)
-                        outputImage.SetPixel(i, j, UseSepiaFilter(outputImage.GetPixel(i, j)));
+                    threads[i] = new Thread[XThreadsCount];
+                    for (byte j = 0; j < XThreadsCount; j++)
+                    {
+                        threads[i][j] = new Thread(UseSepiaFilter);
+                        threads[i][j].Start(new Point(j, i));
+                    }
                 }
-            }
-            else
-            {
-                int i = filterName.IndexOf('(');
-                int j = filterName.IndexOf(')');
-                UInt16 parameter = UInt16.Parse(filterName.Substring(i + 1, j - i - 1));
-                for (i = 0; i < outputImage.Width; i++)
+                else
                 {
-                    for (j = 0; j < outputImage.Height; j++)
-                        outputImage.SetPixel(i, j, UseThresholdFilter(outputImage.GetPixel(i, j), parameter));
+                    int l = filterName.IndexOf('(');
+                    int r = filterName.IndexOf(')');
+                    ThresholdFilterParameter = Byte.Parse(filterName.Substring(l + 1, r - l - 1));
+                    for (byte i = 0; i < YThreadsCount; i++)
+                    {
+                        threads[i] = new Thread[XThreadsCount];
+                        for (byte j = 0; j < XThreadsCount; j++)
+                        {
+                            threads[i][j] = new Thread(UseThresholdFilter);
+                            threads[i][j].Start(new Point(j, i));
+                        }
+                    }
                 }
+                System.Drawing.ImageConverter converter = new System.Drawing.ImageConverter();
+                for (byte i = 0; i < YThreadsCount; i++)
+                {
+                    for(byte j=0; j<XThreadsCount; j++)
+                        threads[i][j].Join();
+                }
+                outputBytes = (byte[])converter.ConvertTo(OutputImage, typeof(byte[]));
             }
-            System.Drawing.ImageConverter converter = new System.Drawing.ImageConverter();
-            var outputBytes = (byte[])converter.ConvertTo(outputImage, typeof(byte[]));
             return Encoding.Default.GetString(outputBytes);
         }
     }
