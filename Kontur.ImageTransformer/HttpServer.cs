@@ -3,6 +3,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
+using System.Diagnostics;
 
 namespace Kontur.ImageTransformer
 {
@@ -79,11 +80,15 @@ namespace Kontur.ImageTransformer
         }
         private void HandleContext(HttpListenerContext listenerContext)
         {
-            int maxImageSize = 102400;
+            var sw = new Stopwatch();
+            sw.Start();
+            const int maxImageSize = 102400;//максимальный размер изображения в байтах
+            const int maxTime = 1000;//максимальное допустимое время обработки запроса в миллисекундах
             var request = listenerContext.Request;
             string filterName;
             int[] frameParameters=new int[4];
             string inputImage, resultImage;
+            bool isTimeout;
             try
             {
                 if (request.HttpMethod != "POST")
@@ -110,11 +115,19 @@ namespace Kontur.ImageTransformer
                 var requestBodyStream = request.InputStream;
                 using (var reader = new StreamReader(requestBodyStream))
                     inputImage = reader.ReadToEnd();
-                resultImage = ImageConverter.Convert(inputImage, filterName, frameParameters[0], frameParameters[1], frameParameters[2], frameParameters[3]);
+                resultImage = ImageConverter.Convert(inputImage, filterName, frameParameters[0], 
+                    frameParameters[1], frameParameters[2], frameParameters[3], sw, maxTime, out isTimeout);
             }
             catch(ArgumentException)
             {
                 listenerContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                using (var writer = new StreamWriter(listenerContext.Response.OutputStream))
+                    writer.Write("");
+                return;
+            }
+            if(isTimeout)
+            {
+                listenerContext.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
                 using (var writer = new StreamWriter(listenerContext.Response.OutputStream))
                     writer.Write("");
                 return;

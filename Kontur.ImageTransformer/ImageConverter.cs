@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Drawing;
 using System.Threading;
+using System.Diagnostics;
 
 namespace Kontur.ImageTransformer
 {
@@ -16,6 +17,9 @@ namespace Kontur.ImageTransformer
         private int OutputImageWidth;
         private int OutputImageHeight;
         private byte ThresholdFilterParameter;
+        Stopwatch Sw;
+        int MaxTime;
+        bool IsTimeout;
         private Bitmap CutImage(Bitmap inputImage, int x, int y, int w, int h)
         {
             if (w < 0)
@@ -72,6 +76,11 @@ namespace Kontur.ImageTransformer
             {
                 for (int j = startX; j <= endX; j++)
                 {
+                    if (Sw.ElapsedMilliseconds > MaxTime)
+                    {
+                        IsTimeout = true;
+                        return;
+                    }
                     Color color;
                     lock (OutputImage)
                     {
@@ -105,6 +114,11 @@ namespace Kontur.ImageTransformer
             {
                 for (int j = startX; j <= endX; j++)
                 {
+                    if (Sw.ElapsedMilliseconds > MaxTime)
+                    {
+                        IsTimeout = true;
+                        return;
+                    }
                     Color color;
                     lock (OutputImage)
                     {
@@ -146,6 +160,11 @@ namespace Kontur.ImageTransformer
             {
                 for (int j = startX; j <= endX; j++)
                 {
+                    if (Sw.ElapsedMilliseconds > MaxTime)
+                    {
+                        IsTimeout = true;
+                        return;
+                    }
                     Color color;
                     lock (OutputImage)
                     {
@@ -169,7 +188,8 @@ namespace Kontur.ImageTransformer
                 }
             }
         }
-        public string Convert(string strInputImage, string filterName, int x, int y, int w, int h)
+        public string Convert(string strInputImage, string filterName, int x, int y, int w, int h, 
+            Stopwatch sw, int maxTime, out bool isTimeout)
         {
             byte[] imageBytes = Encoding.Default.GetBytes(strInputImage);
             MemoryStream ms = new MemoryStream(imageBytes);
@@ -186,12 +206,17 @@ namespace Kontur.ImageTransformer
             using (OutputImage = CutImage(inputImage, x, y, w, h))
             {
                 if (OutputImage == null)
+                {
+                    isTimeout = false;
                     return null;
+                }
                 OutputImageWidth = OutputImage.Width;
                 OutputImageHeight = OutputImage.Height;
                 XStepSize = OutputImageWidth / XThreadsCount;
                 YStepSize = OutputImageHeight / YThreadsCount;
                 Thread[][] threads = new Thread[YThreadsCount][];
+                Sw = sw;
+                MaxTime = maxTime;
                 if (filterName == "grayscale")
                 {
                     for(byte i=0; i<YThreadsCount; i++)
@@ -235,8 +260,14 @@ namespace Kontur.ImageTransformer
                     for(byte j=0; j<XThreadsCount; j++)
                         threads[i][j].Join();
                 }
+                if (IsTimeout)
+                {
+                    isTimeout = true;
+                    return null;
+                }
                 outputBytes = (byte[])converter.ConvertTo(OutputImage, typeof(byte[]));
             }
+            isTimeout = false;
             return Encoding.Default.GetString(outputBytes);
         }
     }
