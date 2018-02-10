@@ -260,6 +260,7 @@ namespace Kontur.ImageTransformer
                     for(byte j=0; j<XThreadsCount; j++)
                         threads[i][j].Join();
                 }
+                sw.Stop();
                 if (IsTimeout)
                 {
                     isTimeout = true;
